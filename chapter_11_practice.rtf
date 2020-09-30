@@ -1,0 +1,127 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2513
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fswiss\fcharset0 Helvetica-Bold;\f2\froman\fcharset0 Times-Bold;
+\f3\froman\fcharset0 Times-Roman;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 Chapter 11 Practice\
+\
+
+\f1\b 11E1 If an event has probability 0.35, what are the log-odds of this event? 
+\fs22 \
+
+\f0\b0 > p = 0.35\
+> log(p / (1-p))\
+[1] -0.6190392\
+\
+\pard\pardeftab720\partightenfactor0
+
+\f1\b\fs24 \cf0 11E2. If an event has log-odds 3.2, what is the probability of this event? 
+\f2\fs22 \
+
+\f0\b0 Rearrange formula to get\
+> exp(3.2) / (1+exp(3.2))\
+[1] 0.9608343
+\f3 \
+\
+
+\f1\b\fs24 11E3 Suppose that a coefficient in a logistic regression has value 1.7. What does this imply about the proportional change in odds of the outcome? 
+\f3\b0\fs22 \
+
+\f0 This means that a unit increase in the model space (e.g. x) will result in an increase in the odds of 1.7 times, making the event 1.7 times more likely if we increase the predictor by 1 unit. this is a relative effect, and may not change the overall probability much, depending on the original baseline probability.\
+\
+
+\f1\b\fs24 11E4  Why do poisson regressions sometimes require an offset? Give an example\
+
+\f0\b0\fs22 The require an offset if the counts of events in the data have occurred over different timeframes. For example, if you want to model fish caught in one lake recorded in fish caught in an hour period and fish caught in another lake in a two hour period, you need an offset. This is a column in the data that details the time over which the count data was collected. \
+\pard\tx1576\pardeftab720\partightenfactor0
+
+\f1\b\fs24 \cf0 \
+11M1 As explained in the chapter, binomial data can be organised in aggregated and disaggregated forms, without any impact on inference. But the likelihood of the data does change when the data are converted between the two formats. Can you explain why? \
+
+\f0\b0 In aggregated data, we are considering an entire chunk of data at once, whereas in disaggregated data we are considering each data point individually. This introduces the factor in the ways that aggregated data can be arranged in different ways of n choose m. Not present in the disaggregated format. \
+\
+
+\f1\b 11M2 If a coefficient in a Poisson regression has value 1.7, what does this imply about the change in the outcome? 
+\f0\b0 \
+If we\'92ve used a log-link in the Poisson regression, then a unit change in the model space will produce an exp(1.7) ~ 5x change in the predictor space. Hence the expected mean is now five times more likely with a unit increase in the value of the model\
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf0 \
+11M3 Explain why the logit link is appropriate for a binomial generalised linear model. \
+\pard\tx1576\pardeftab720\partightenfactor0
+
+\f0\b0\fs22 \cf0 The probability of an event (for example binomial events in a binomial GLM) has to be between 0 and 1. The logit link maps values in the linear model (which could take on any real value) to probabilities between 0 and 1.\
+\
+
+\f1\b\fs24 11M4 Explain why the log link is appropriate for a Poisson generalised linear model. \
+
+\f0\b0\fs22 The parameter for a poisson distribution is lambda, which must be real and positive, but has no upper bound. A log link has the effect of mapping these positive numbers to the linear model, which can take on any real value. \
+The log of any number is defined as being positive.\
+\
+
+\f1\b\fs24 11M5 What would it imply to use a logit link for the mean of a Poisson generalised linear model? Can you think of a real research problem for which this would make sense? \
+
+\f0\b0\fs22 This would imply that the mean of the Poisson distribution could only take on values between 0 and 1. Something in which the mean of a Poisson distribution is constrained to be between 0 and 1? I can\'92t think of anything atm\
+\
+
+\f1\b\fs24 11M6 State the constraints for which the binomial and Poisson distributions have maximum entropy. Are the constraints different at all for binomial and Poisson? Why or why not? \
+
+\f0\b0 Binomial distribution has max entropy for a known number of N events that produce a count outcome of 0 to a known upper bound. Each event assumed to have the same probability of happening, p. \
+\
+Poisson distribution has max entropy for events that produce a count outcome, typically in a given time, with an unknown upper limit on the theoretical maximum of the count. \
+\
+Poisson is an approximation to binomial for large N. Constraints are different, as we don\'92t need to know the upper bound on the count. \
+
+\fs22 \
+
+\f1\b\fs24 11M7 Use quap to construct a quadratic approximate posterior distribution for the chimpanzee model that includes a unique intercept for each actor m11.4 Compare the quadratic approximation to the posterior distribution produced instead from MCMC. Can you explain both the differences and the similarities between the approximate and the MCMC distributions? Relax the prior on the actor intercepts to Normal(0,10). Re-estimate the posterior using both ulam and quap. Do the differences increase or decrease? Why? \
+\
+
+\f0\b0 Rcode: \
+precis(m11.4, depth=2)[, 1 ] / precis(m11.4_q, depth=2)[, 1]\
+ratio of actor posterior parameters: \
+1.0508551 1.0390815 1.0362250 1.0378178 1.0439359 0.9913340 1.0277874\
+ratio of treatment posterior parameters:\
+0.6726776 1.0270834 0.9847758 1.0352949\
+\
+Largest difference here is in the first treatment posterior parameter. Although, this is because I\'92ve taken a ratio and it\'92s close to zero. If we take the absolute difference, the largest difference is the second actor posterior parameter. But still not that big, it largely overlaps. This is the posterior that is farthest away from zero, for the chimp that always pulls the lever. There posterior is bounded here, so a quadratic approximation won\'92t do as well. For the other parameters, quad does very well\
+\
+Weak posteriors:\
+precis(m11.4_weak, depth=2)[, 1 ] / precis(m11.4_weak_q, depth=2)[, 1]\
+\
+\pard\tx1576\pardeftab720\partightenfactor0
+\cf0 ratio of actor posterior parameters: \
+\pard\tx1576\pardeftab720\partightenfactor0
+\cf0 -0.025137503  4.486071113 -0.031166084 -0.023080615 -0.022670481  0.004908735\
+0.057579170  \
+\
+ratio of treatment posterior parameters:\
+0.008580244  0.018239148  0.008493859  0.013782594\
+\
+now we really see the difference in the quad approximation of the 2nd actor posterior parameter estimation, where, the two almost don\'92t overlap. ulam allows very high values, because a very weak prior here piles up all of the probability in the tails of the distribution. (see examples on choosing a prior earlier in the chapter) Since chimp 2 always pulls the lever, there is not enough data even from the other chimps to change this prior. 
+\f1\b \
+\
+11M8 Revisit the data(Kline) islands example. This time drop Hawaii from the sample and refit the models. What changes do you observe? \
+\
+\pard\pardeftab720\partightenfactor0
+
+\fs20 \cf0 11H1. Use WAIC or PSIS to compare the chimpanzee model that includes a unique intercept for each actor, m11.4, to the simpler models fit in the same section. Interpret the results. 
+\f0\b0 \
+They have the same WAIC or PSIS. Essentially because treatment doesn\'92t matter. \
+\
+\pard\pardeftab720\partightenfactor0
+
+\f1\b\fs24 \cf0 11H2 While one eagle feeds, some- times another will swoop in and try to steal the salmon from it. Call the feeding eagle the \'93victim\'94 and the thief the \'93pirate.\'94 Use the available data to build a binomial GLM of successful pirating attempts. \
+a) 
+\f0\b0 Consider the model shown. Is quap OK? Yes. \
+
+\f1\b b) \
+\pard\tx1576\pardeftab720\partightenfactor0
+\cf0 \
+\pard\pardeftab720\partightenfactor0
+
+\f0\b0\fs22 \cf0 \
+}
