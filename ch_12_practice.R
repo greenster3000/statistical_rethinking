@@ -88,9 +88,79 @@ shade(lci.2 , f_seq)
 # may help to generate counterfactual predictions contrasting hurricanes with masculine and feminine
 # names. Are the effect sizes plausible?
 
-# So we want femininity * damage_norm model, as well as femininity * min_pressure and 
-# fem * d_norm * min_pres
+# So we want 
+# 1. femininity + damage_norm
+# 2. femininity + min_pressure
+# 3. femininity + min_pressure + damage_norm
 
+# 12H5. One hypothesis from developmental psychology, usually attributed to Carol Gilligan, pro-
+# poses that women and men have different average tendencies in moral reasoning. Like most hypothe-
+# ses in social psychology, it is descriptive, not causal. The notion is that women are more concerned
+# with care (avoiding harm), while men are more concerned with justice and rights. Evaluate this hy-
+# pothesis, using the Trolley data, supposing that contact provides a proxy for physical harm. Are
+# women more or less bothered by contact than are men, in these data? Figure out the model(s) that is
+# needed to address this question.
+library(rethinking)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+data(Trolley)
+d <- Trolley
+dat <- list(
+  R=d$response,
+  C=d$contact,
+  A=d$action,
+  I=d$intention,
+  M=d$male  
+)
+m12.5b <- ulam(
+  alist(
+    R ~ dordlogit( phi , cutpoints ),
+    phi <- bA*A + bC*C + BI*I ,
+    BI <- bI + bIA*A + bIC*C ,
+    c(bA,bI,bC,bIA,bIC) ~ dnorm( 0 , 0.5 ),
+    cutpoints ~ dnorm( 0 , 1.5 )
+  ) , data=dat , chains=4 , cores=4 )
 
+m12h5g <- ulam(
+  alist(
+    R ~ dordlogit( phi , cutpoints ),
+    phi <- bA*A + bC*C + bI*I + bM*M + bMC*M*C,
+    c(bA, bC, bI, bM, bMC) ~ dnorm( 0 , 0.5),
+    cutpoints ~ dnorm( 0 , 1.5 )
+  ) , data = dat , chains = 4 , cores = 4
+)
 
+m12.5g2 <- ulam(
+  alist(
+    R ~ dordlogit( phi , cutpoints ),
+    phi <- bA*A + bC*C + bI*I + bM*M + bIA*A + bIC*C + bMC*M*C + bMCI*M*C*I,
+    c(bA,bI,bC,bM,bIA,bIC,bMC,bMCI) ~ dnorm( 0 , 0.5 ),
+    cutpoints ~ dnorm( 0 , 1.5 )
+  ) , data=dat , chains=4 , cores=4 )
 
+kA <- 0
+kI <- 0
+kC <- 0
+kM <- 0:1
+pdat <- data.frame(A=kA, I=kI, C=kC, M=kM)
+s <- sim(m12h5g, data=pdat)
+simplehist(s, xlab="response")
+
+kA <- 0
+kI <- 0
+kC <- 0
+kM <- 0:1
+pdat <- data.frame(A=kA, I=kI, C=kC, M=kM)
+plot( NULL, type="n", xlab="intention", ylab="probability", 
+      xlim=c(0,1), ylim=c(0,1), xaxp=c(0,1,1), yaxp=c(0,1,2))
+phi <- link(m12h5g, data=pdat)[1,]
+post <- extract.samples(m12h5g)
+for ( s in 1:50 ) {
+  pk <- pordlogit(1:6, phi[s, ], post$cutpoints[s, ])
+  for (i in 1:6) lines(kI, pk[,i], col=grau(0.1))
+}
+precis_plot(precis(m12.5g2))
+precis_plot(precis(m12h5g))
+# try this one again with just contact and gender and better plotting
+# try making triptych plots
+# try making functions to do your plots
