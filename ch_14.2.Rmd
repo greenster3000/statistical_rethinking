@@ -1,0 +1,14 @@
+---
+title: "Stat Rethinking 2 - Chatper 14.2"
+output: html_notebook
+---
+
+Now looking at more than two varying effects. Varying intercepts and more than
+one slope. 
+
+(see re-param notebook to refresh ideas on re-paraming)
+```{r warning=FALSE}
+
+```
+
+

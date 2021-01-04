@@ -186,7 +186,7 @@ $\sigma_{\beta} \sim exp(1)$ Prior for stddev among slope
 $\mathbf{R} \sim LKJcorr(2)$ Prior for correlation matrix
 
 Put this into an actual Stan Model
-```{r echo=TRUE, warning=FALSE}
+```{r results="hide"}
 set.seed(867530)
 m14.1 <- ulam(
   alist(
@@ -233,7 +233,7 @@ getmode(round(post$Rho[,1,2], 2))
 Text suggests running the same with flat priot of LKJcorr(1) and strongly 
 regluarizing prior of LKJcorr(5) and see what happens. Let's try!
 
-```{r warning=FALSE, include=FALSE}
+```{r results="hide"}
 set.seed(867530)
 m14.1_flat <- ulam(
   alist(
