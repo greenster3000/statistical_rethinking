@@ -1,27 +1,21 @@
 ---
-title: "ch13_non-centred_practice"
+title: "Chapter 13 Non-centred parametrisation practice"
 output: html_notebook
 ---
-13M3. Re-estimate the basic Reed frog varying intercept model, but now using a 
+**13M3. Re-estimate the basic Reed frog varying intercept model, but now using a 
 Cauchy distribution in place of the Gaussian distribution for the varying 
-intercepts. That is, fit this model:
+intercepts. That is, fit this model:**
 
-$s_i \sim Binomial(n_i , p_i) \\
+**$s_i \sim Binomial(n_i , p_i) \\
 logit(p_i) = \alpha_{TANK[i]} \\
 \alpha_{[TANK]} \sim Cauchy(\alpha, \sigma) \\
 \alpha \sim \mathcal{N}(0, 1) \\
-\alpha \sim Exponential(1)$
+\alpha \sim Exponential(1)$**
 
-(You are likely to see many divergent transitions for this model. Can you 
-figure out why? Can you fix them?) Compare the posterior means of the 
-intercepts, α tank , to the posterior means produced in the chapter, using the 
-customary Gaussian prior. Can you explain the pattern of differences? Take 
-note of any change in the mean α as well.
-```{r results="hide"}
+```{r}
 library(rethinking)
 data("reedfrogs")
 d <- reedfrogs
-str(d)
 
 d$tank <- 1:nrow(d)
 
@@ -32,7 +26,7 @@ dat <- list(
   N=as.integer(d$density),
   tank=as.integer(d$tank)
 )
-
+set.seed(1999)
 m13m3 <- ulam(
   alist(
     S ~ dbinom(N, p),
@@ -43,9 +37,35 @@ m13m3 <- ulam(
   ), data=dat, chains=4, log_lik = TRUE
 )
 ```
+121 divergent transitions! Highest rhat is 1.03
+
+**(You are likely to see many divergent transitions for this model. Can you 
+figure out why? Can you fix them?) **
+
+```{r}
+m13m3nc <- ulam(
+  alist(
+    S ~ dbinom(N, p),
+    logit(p) <- a_bar + z[tank]*sigma_a,
+    z[tank] ~ uniform(0, 1.570796),
+    a_bar ~ dnorm(0, 1),
+    sigma_a ~ dexp(1),
+    gq> vector[tank]:a <<-a_bar + sigma_a*z
+  ), data=dat, chains=4, log_lik = TRUE, iter=2000
+)
+```
+
+et voila! after some fishin around on the internet, found this:
 
 
-from the chapter
+
+**Compare the posterior means of the 
+intercepts, $\alpha_{TANK}$, to the posterior means produced in the chapter, using the 
+customary Gaussian prior. Can you explain the pattern of differences? Take 
+note of any change in the mean $\alpha$ as well.**
+
+
+
 
 ```{r results="hide"}
 m13.2 <- ulam(
@@ -76,18 +96,5 @@ on the log-odds scale already before cauchy.
 
 Apparently Cauchy has an undefined mean cos of tose crazy tails! That's where
 we get those large a values from
-```{r}
-m13m3nc <- ulam(
-  alist(
-    S ~ dbinom(N, p),
-    logit(p) <- a_bar + z[tank]*sigma_a,
-    z[tank] ~ dcauchy(0, 1),
-    a_bar ~ dnorm(0, 1),
-    sigma_a ~ dexp(1),
-    gq > vector [tank]:a <<- a_bar + z*sigma_a
-  ), data=dat, chains=4, log_lik = TRUE
-)
-compare(m13m3m, m13m3nc)
-precis(m13m3, m13m3nc)
-```
+
 re-parameterised to have no divergent transitions!

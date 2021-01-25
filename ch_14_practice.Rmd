@@ -1,0 +1,61 @@
+---
+title: "Chapter 14 Practice"
+output: html_notebook
+---
+**14E1.** Add to the following model varying slopes on the predictor $x$.
+$$
+\begin{aligned}
+y_i \sim \text{Normal}(\mu_i, \sigma) \\
+\mu_i = \alpha_{\text{GROUP}[i]} + \beta x_i \\
+\alpha_{\text{GROUP}} \sim \text{Normal}(\alpha, \sigma_{\alpha}) \\
+\alpha \sim \text{Normal}(0, 10) \\
+\beta \sim \text{Normal}(0, 1) \\
+\sigma \sim \text{Exponential} (1) \\
+\sigma_{\alpha} \sim \text{Exponential} (1)
+\end{aligned}
+$$
+**Answer**
+$$
+\begin{aligned}
+y_i \sim \text{Normal}(\mu_i, \sigma) \\
+\mu_i = \alpha_{\text{GROUP}[i]} + \beta_{\text{GROUP}[i]} x_i \\
+\begin{bmatrix}
+\alpha_{\text{GROUP}[i]} \\
+\beta_{\text{GROUP}[i]} 
+\end{bmatrix}
+\sim \text{MV Normal}
+\begin{pmatrix}
+\begin{bmatrix}
+\alpha \\ \beta
+\end{bmatrix},
+\begin{pmatrix}
+\sigma_{\alpha}^2 & \sigma_{\alpha}\sigma_{\beta}\rho \\
+\sigma_{\alpha}\sigma_{\beta}\rho & \sigma_{\beta}^2
+\end{pmatrix}
+\end{pmatrix} \\
+\alpha \sim \text{Normal}(0, 10)\\
+\beta \sim \text{Normal}(0, 1)\\
+\sigma_\alpha \sim \text{Exponential}(1) \\
+\sigma_\beta \sim \text{Exponential}(1) \\
+\rho \sim \text{LKJcorr}(2) 
+\end{aligned}
+$$
+**14E2.** Think up a context in which varying intercepts will be positively correlated with varying slopes. Provide a mechanistic explanation for the correlation.
+
+**Answer**
+
+**14E3.** When is it possible for a varying slopes model to have fewer effective parameters (as estimated by WAIC or PSIS) than the corresponding model with fixed (unpooled) slopes? Explain.
+
+**Answer**
+
+**14M1.** Repeat the café robot simulation from the beginning of the chapter. This time, set rho to zero, so that there is no correlation between intercepts and slopes. How does the posterior distribution of the correlation reflect this change in the underlying simulation?
+
+**Answer**
+```{r}
+m14m1 <- ulam(
+  alist(
+    
+  )
+)
+```
+

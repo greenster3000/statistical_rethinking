@@ -1,0 +1,72 @@
+---
+title: "Chapter 14.5 Continuous categories"
+output: html_notebook
+---
+```{r}
+library(rethinking)
+data("islandsDistMatrix")
+Dmat <- islandsDistMatrix
+colnames(Dmat) <- c("Ml","Ti","SC","Ya","Fi","Tr","Ch","Mn","To","Ha")
+round(Dmat, 1)
+```
+$$
+\begin{aligned} 
+T_i \sim \text{Poisson}(\lambda_i)
+\end{aligned}
+$$
+$$
+\begin{aligned}
+\lambda_i = \alpha P_i^\beta /\gamma
+\end{aligned}
+$$
+$$
+\begin{aligned}
+\lambda_i = \text{exp}(k_{\text{SOCIETY}[i]})\alpha P_i^\beta /\gamma
+\end{aligned}
+$$
+$$
+\begin{aligned}
+\begin{pmatrix}
+k_1 \\ k_2 \\ k_3 \\ ... \\ k_{10}
+\end{pmatrix}
+\sim \text{MV Normal}
+\begin{pmatrix}
+\begin{pmatrix}
+0 \\ 0 \\ 0 \\ ... \\ 0
+\end{pmatrix}
+,\textbf{K}
+\end{pmatrix}
+\end{aligned}
+$$
+$$
+\begin{aligned}
+\textbf{K}_{ij} = \eta^2\text{exp}(-\rho^2D_{ij}^2) + \delta_{ij}\sigma^2
+\end{aligned}
+$$
+```{r results="hide"}
+data("Kline2")
+d <- Kline2
+d$society <- 1:10
+dat_list <- list(
+  T = d$total_tools,
+  P = d$population,
+  society = d$society,
+  Dmat = islandsDistMatrix
+)
+m14.8 <- ulam(
+  alist(
+    T ~ dpois(lambda),
+    lambda <- (a*P^b/g)*exp(k[society]),
+    vector[10]:k ~ multi_normal(0, SIGMA),
+    matrix[10,10]:SIGMA <- cov_GPL2(Dmat, etasq, rhosq, 0.01),
+    c(a, b, g) ~ dexp(1),
+    etasq ~ dexp(2),
+    rhosq ~ dexp(0.5)
+  ), data=dat_list, chains=4, iter=2000
+)
+```
+```{r}
+precis(m14.8, depth=3)
+```
+
+

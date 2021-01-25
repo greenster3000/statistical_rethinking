@@ -1,0 +1,155 @@
+---
+title: "Chapter 14.3 Instruments and causal designs"
+output: html_notebook
+---
+Instrumental variables are "tricks" to try and get around cases where we have an
+otherwise impossible task given our DAG and unobserved variables.
+
+Taking the dag below where we're trying to find the effect of education on wages
+:
+```{r}
+dag14.1 <- dagitty("dag{Q -> E;
+U -> E;
+E -> W;
+U -> W}")
+coordinates(dag14.1) <- list(x = c(Q=0, E=1, U=2, W=3),
+                               y=c(Q=0, E=1, U=0, W=1))
+drawdag(dag14.1)
+```
+There's many unobserved confounds Q that open the backdoor. However, if we can 
+find something that influences our exposure, but not the unobserved confound or 
+the result (apart from through our desired exposure) then we're in luck.
+
+It's as though we have performed an experiment on E. IF we regress correctly.
+
+Some generated data:
+```{r}
+set.seed(1999)
+N <- 500
+U_sim <- rnorm(N)
+Q_sim <- sample(1:4, size = N, replace = TRUE)
+E_sim <- rnorm(N, U_sim + Q_sim)
+W_sim <- rnorm(N, U_sim + 0*E_sim)
+dat_sim <- list(
+  W=standardize(W_sim),
+  E=standardize(E_sim),
+  Q=standardize(Q_sim)
+)
+```
+Normally distributed confound. Q is the quarter of year of birth. In the states,
+those born in Q1 start school later and have the option to drop out earlier, 
+hence typically have less schooling. Education E is determined by this Q and our
+confound U.
+
+Here, we've said wages are influence by confound U but *not* education. 
+
+Naively regress wages solely on education.
+```{r results="hide"}
+m14.4 <- ulam(
+  alist(
+    W ~ dnorm( mu, sigma),
+    mu <- aW + bEW*E,
+    aW ~ dnorm(0, 0.2),
+    bEW ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data=dat_sim, chains=4
+)
+precis(m14.4)
+```
+...and we see our backdoor through the confound! There's allegedly an effect of 
+education on wages here.
+
+We've asked the golem to take a look at this data and tell us if there's a 
+relationship:
+
+```{r}
+plot(E_sim, W_sim)
+```
+and understandably given only this info, it has.
+
+Now a new model where we simply throw everything into the mix, with our new
+instrument Q. 
+```{r results="hide"}
+m14.5 <- ulam(
+  alist(
+    W ~ dnorm(mu, sigma),
+    mu <- aW + bEW*E + bQW*Q,
+    aW ~ dnorm(0, 0.2),
+    bEW ~ dnorm(0, 0.5), 
+    bQW ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data=dat_sim, chains=4
+)
+precis(m14.5)
+```
+This has made things even worse. There's more of an effect of Education on Wages
+now, and our instrument allegedly has a negative effect on wages! This is bias
+amplification.
+
+Instead, let's try this model. We hypothesise that education and wages co-vary.
+Also, looking at our DAG, that wages depend on education, and education depends
+on instrument Q - birth quarter. Education is on both sides of the equation. 
+This is OK. 
+```{r results="hide"}
+m14.6 <- ulam(
+  alist(
+    c(W, E) ~ multi_normal(c(muW, muE), Rho, Sigma),
+    muW <- aW + bEW*E,
+    muE <- aE + bQE*Q,
+    c(aW, aE) ~ normal(0, 0.2),
+    c(bEW, bQE) ~ normal(0, 0.5),
+    Rho ~ lkj_corr(2),
+    Sigma ~ exponential(1)
+  ), data=dat_sim, chains = 4
+)
+precis(m14.6, depth = 3)
+```
+Our results here show that there is very little effect of education and wages, 
+when birth quarter is considered. The Rho[1,2] parameter is *not* the *actual* 
+correlation between education and wages, but the residual once the effect of the
+instrument is taken into account. 
+
+Try with new data where we do simulate an effect of education on wages. 
+```{r results="hide"}
+W_sim <- rnorm(N, U_sim + 1*E_sim)
+dat_sim <- list(
+  W=standardize(W_sim),
+  E=standardize(E_sim),
+  Q=standardize(Q_sim)
+)
+m14.4x <- ulam(m14.4, data=dat_sim, chains=4)
+m14.6x <- ulam(m14.6, data=dat_sim, chains=4)
+precis(m14.4x)
+precis(m14.6x, depth = 3)
+```
+The dodgy model is more confident than it should be. The correct model shows 
+that there now is an effect. It also shows there remains some co-variance 
+between wages and education. Just showing there is causation is not enough, we
+also want to know how much.
+
+Finally, education is positive but the confound is negative, meaning that it is 
+hidden
+```{r results="hide"}
+W_sim <- rnorm(N, -U_sim + 0.2*E_sim)
+dat_sim <- list(
+  W=standardize(W_sim),
+  E=standardize(E_sim),
+  Q=standardize(Q_sim)
+)
+plot(E_sim, W_sim)
+m14.4x <- ulam(m14.4, data=dat_sim, chains=4)
+m14.6x <- ulam(m14.6, data=dat_sim, chains=4)
+precis(m14.4x)
+precis(m14.6x, depth = 3)
+```
+Now, the model gives us the inferrence that there is a correlation 
+between Education and Wages (as we simulated) but a negative residual 
+correlation between them (Rho[1,2]) indicating that the unobserved confound 
+affects them in different directions. 
+
+Incorrect model gives us the wrong inference, as it would do given all the info
+we've given it is that scatter plot.
+
+Instruments can be hard to find. They might also not be that strong. Can be 
+effective though.
+
