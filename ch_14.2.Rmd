@@ -1,0 +1,147 @@
+---
+title: "Stat Rethinking 2 - Chatper 14.2"
+output: html_notebook
+---
+
+Now looking at more than two varying effects. Varying intercepts and more than
+one slope. 
+
+
+```{r warning=FALSE}
+library(rethinking)
+data("chimpanzees")
+d <- chimpanzees
+
+d$block_id <- d$block
+d$treatment <- 1L + d$prosoc_left + 2L*d$condition
+
+dat <- list(
+  L = d$pulled_left,
+  tid = d$treatment,
+  actor = d$actor,
+  block_id = as.integer(d$block_id)
+)
+```
+
+```{r results="hide"}
+set.seed(4387510)
+
+m14.2 <- ulam(
+  alist(
+    # Likelihood - each chimp as probability p of pulling left per trial
+    L ~ dbinom(1, p),
+    
+    # Linear model, this probability depends on the treatment, the chimp and the experimental block
+    # Each treatment has a fixed effect per itself, and per chimp and block
+    # Each chimp also has a fixed effect, as does each block
+    logit(p) <- g[tid] + alpha[actor, tid] + beta[block_id, tid],
+    
+    # Adaptive priors for actors and blocks. Each prior is learnt from the data with pooling.
+    # There is also co-variance between different actors. Learning about one actor can tell us
+    # info about the others. Ditto blocks.
+    # Mean is zero cos all we've given a g[tid] that has effect per treatment already.
+    vector[4]:alpha[actor] ~ multi_normal(0, Rho_actor, sigma_actor),
+    vector[4]:beta[block_id] ~ multi_normal(0, Rho_block, sigma_block),
+    
+    # Fixed priors
+    g[tid] ~ dnorm(0, 1),
+    sigma_actor ~ dexp(1),
+    Rho_actor ~ dlkjcorr(4),
+    sigma_block ~ dexp(1),
+    Rho_block ~ dlkjcorr(4)
+  ), data=dat, chains=4
+)
+```
+
+Have divergent transitions again, now we need to use a Cholesky factors. Same principle of smuggling out, but trickier.
+
+```{r results="hide"}
+m14.3 <- ulam(
+  alist(
+    L ~ binomial(1, p),
+    logit(p) <- g[tid] + alpha[actor, tid] + beta[block_id, tid],
+    
+    transpars> matrix[actor, 4]:alpha <- compose_noncentered(sigma_actor, L_Rho_actor, z_actor),
+    transpars> matrix[block_id, 4]:beta <- compose_noncentered(sigma_block, L_Rho_block, z_block),
+    
+    matrix[4, actor]:z_actor ~ normal(0, 1),
+    matrix[4, block_id]:z_block ~ normal(0, 1),
+    
+    g[tid] ~ normal(0, 1),
+    vector[4]:sigma_actor ~ dexp(1),
+    vector[4]:sigma_block ~ dexp(1),
+    cholesky_factor_corr[4]:L_Rho_actor ~ lkj_corr_cholesky(2),
+    cholesky_factor_corr[4]:L_Rho_block ~ lkj_corr_cholesky(2),
+    
+    gq> matrix[4,4]:Rho_actor <<- Chol_to_Corr(L_Rho_actor),
+    gq> matrix[4,4]:Rho_block <<- Chol_to_Corr(L_Rho_block)
+    
+  ), data=dat, chains=4, log_lik = TRUE, iter=4000
+)
+```
+```{r}
+precis(m14.3, depth=2, pars=c("sigma_actor", "sigma_block"))
+```
+
+Only the means of the posterior, the actual shrinkage isn't always the mean here, but is averaged over the entire posterior distribution.
+
+However, can see that the values in sigma_block are very small. This means not much variation between the various treatments in different blocks, everything gets shrunk if a block *is* different.
+
+Similarly in actors, there is more variation, but similar between each sigma. 
+
+```{r}
+# compute mean for each actor in each treatment
+pl <- by( d$pulled_left , list( d$actor , d$treatment ) , mean )
+# generate posterior predictions using link
+datp <- list(
+actor=rep(1:7,each=4) ,
+tid=rep(1:4,times=7) ,
+block_id=rep(5,times=4*7) )
+p_post <- link( m14.3 , data=datp )
+p_mu <- apply( p_post , 2 , mean )
+p_ci <- apply( p_post , 2 , PI )
+# set up plot
+plot( NULL , xlim=c(1,28) , ylim=c(0,1) , xlab="" ,
+ylab="proportion left lever" , xaxt="n" , yaxt="n" )
+axis( 2 , at=c(0,0.5,1) , labels=c(0,0.5,1) )
+abline( h=0.5 , lty=2 )
+for ( j in 1:7 ) abline( v=(j-1)*4+4.5 , lwd=0.5 )
+for ( j in 1:7 ) text( (j-1)*4+2.5 , 1.1 , concat("actor ",j) , xpd=TRUE )
+xo <- 0.1 # offset distance to stagger raw data and predictions
+# raw data
+for ( j in (1:7)[-2] ) {
+lines( (j-1)*4+c(1,3)-xo , pl[j,c(1,3)] , lwd=2 , col=rangi2 )
+lines( (j-1)*4+c(2,4)-xo , pl[j,c(2,4)] , lwd=2 , col=rangi2 )
+}
+points( 1:28-xo , t(pl) , pch=16 , col="white" , cex=1.7 )
+points( 1:28-xo , t(pl) , pch=c(1,1,16,16) , col=rangi2 , lwd=2 )
+yoff <- 0.175
+text( 1-xo , pl[1,1]-yoff , "R/N" , pos=1 , cex=0.8 )
+text( 2-xo , pl[1,2]+yoff , "L/N" , pos=3 , cex=0.8 )
+text( 3-xo , pl[1,3]-yoff , "R/P" , pos=1 , cex=0.8 )
+text( 4-xo , pl[1,4]+yoff , "L/P" , pos=3 , cex=0.8 )
+# posterior predictions
+for ( j in (1:7)[-2] ) {
+lines( (j-1)*4+c(1,3)+xo , p_mu[(j-1)*4+c(1,3)] , lwd=2 )
+lines( (j-1)*4+c(2,4)+xo , p_mu[(j-1)*4+c(2,4)] , lwd=2 )
+}
+for ( i in 1:28 ) lines( c(i,i)+xo , p_ci[,i] , lwd=1 )
+points( 1:28+xo , p_mu , pch=16 , col="white" , cex=1.3 )
+points( 1:28+xo , p_mu , pch=c(1,1,16,16) )
+```
+
+Blue - Raw Data
+Black - Model posterior predictions
+Open - No Partner
+Filled - Partner
+Lines are 89% compatability intervals
+
+Can see far more variation among individuals then earlier models. 
+
+The posterior predictions aren't just a repeat of the data. This is good! 
+
+Leftie (actor 2) always pulls the left lever. Here leftie is shrunk to have some chance of pulling right. Shrinks more in treatments 1 and 2 (i.e. those without a partner present) because there was less variation amongst all actors for these treatments. This is what we see with the four sigma_actor values above. The smaller sigma actor means more shrinkage to the mean. More suprised by large values here. 
+
+Same interpretation - treatment doesn't have any effect. 
+
+Advantage in this model is we can see individual responses. E.g. maybe some people *do* respond to aspirin, even if at a population level this doesn't have an effect. 

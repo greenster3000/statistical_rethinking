@@ -1,0 +1,166 @@
+---
+title: "Chapter 13.4 - Non-centred priors"
+output: html_notebook
+---
+Fitting the model for chimps with two varying effects, one for block and one for
+actor. 
+
+```{r results="hide"}
+library(rethinking)
+data("chimpanzees")
+d <- chimpanzees
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+
+dat_list <- list(
+  pulled_left = d$pulled_left,
+  actor=d$actor,
+  block_id=d$block,
+  treatment=as.integer(d$treatment)
+)
+set.seed(13)
+m13.4 <- ulam(
+  alist(
+    pulled_left ~ dbinom( 1, p ),
+    logit(p) <- a[actor] + g[block_id] + b[treatment],
+    
+    # Regular prior
+    b[treatment] ~ dnorm( 0 , 0.5 ),
+    
+    ## adaptive priors
+    a[actor] ~ dnorm(a_bar, sigma_a),
+    g[block_id] ~ dnorm(0, sigma_g),
+
+    ## hyper-priors
+    a_bar ~ dnorm(0, 1.5),
+    sigma_a ~ dexp(1),
+    sigma_g ~ dexp(1)
+  )
+, data = dat_list, chains = 4 , log_lik = TRUE)
+precis(m13.4, depth=2)
+```
+
+We end up with divergent transitions. n_eff is quite low and rhat not always 
+1.00.
+
+Divergent transition means that the particle in the simulation ended up with 
+different energy at the end of its run than the start. Happens where the grad
+of the posterior is very steep in some region, can't sample easily.
+
+This is common, HMC is nice in that it gives us a warning, and it can be fixed 
+by re-parameterising the model. That is, the model is mathematically the same, 
+but numerically different. 
+
+#### 13.4.1 Devils funnel
+```{r results="hide"}
+m13.7 <- ulam(
+  alist(
+    v ~ normal(0,3),
+    x ~ normal(0,exp(v))
+  ), data=list(N=1), chains=4
+)
+precis(m13.7)
+```
+n_eff is very very low and rhat=1.4
+
+Happens cos as $v$ changes, $x$ changes a lot. 
+
+$x \sim \mathcal{N} (0, exp(v))$
+
+Can change this numerically but keep it the same mathematically by moving the
+definition of the embedded parameter $v$ out of the definition of $x$.
+
+$v \sim \mathcal{N} (0,3)$
+
+$z \sim \mathcal{N} (0,1)$
+
+$x = z \space exp(v)$
+
+Substituting in gets us back to the same place that 
+$x \sim \mathcal{N} (0, exp(v))$ had us in before. This is sort of like 
+subtracting the mean and dividing by the standard deviation. Here we've started
+with the Normal (0,1) distribution and multuplied by exp(v), which is our
+standard deviation. If we had an awkward mean, we would add this back on here.
+
+The trick is that now HMC samples from v and z, a lot easier! The $gq>$ bit 
+below means generated quantity. It's calculated at the end of every iteration,
+but not sampled from in the same way. Makes it easier.
+
+```{r results="hide"}
+m13.7nc <- ulam(
+  alist(
+    v ~ normal(0,3),
+    z ~ normal(0,1),
+    gq> real[1]:x <<- z * exp(v)
+  ), data=list(N=1), chains=4
+)
+precis(m13.7nc)
+```
+A lot better now. 
+
+Now we know the trick, back to the chimps! 
+Tricky distributions here are the adaptive priors. 
+
+$\alpha_j \sim \mathcal{N} (\bar{\alpha}, \sigma_\alpha)$
+
+$\gamma_j \sim \mathcal{N} (0, \sigma_\gamma)$
+
+That is $\bar{\alpha}, \sigma_\alpha, \sigma_\gamma$. We need to smuggle these 
+into our linear model. 
+
+Same trick as before. Start with defining them as standardized variables in the 
+code as `z[actor] ~ dnorm(0, 1)` and `x[block_id] ~ dnorm(0, 1)`
+
+We then need to multiply these by their standard deviations $\sigma_\alpha$ and 
+$\sigma_\gamma$ in the linear model. Here we have an akwakrd mean to add back in
+as well, $\bar{\alpha}$. All three variables are now smuggled into the linear
+model.
+
+Treatment part and hyperparameters stay the same. 
+
+We want STAN to caculate these intercepts, as they're of interest to us. Hence 
+we put the generated quantities bit at the bottom.
+
+```{r results="hide"}
+set.seed(13)
+m13.4nc <- ulam(
+  alist(
+    pulled_left ~ dbinom( 1, p ),
+    logit(p) <- a_bar + z[actor]*sigma_a + x[block_id]*sigma_g + b[treatment],
+    
+    # Regular prior
+    b[treatment] ~ dnorm( 0 , 0.5 ),
+    
+    ## adaptive priors
+    z[actor] ~ dnorm(0, 1),
+    x[block_id] ~ dnorm(0, 1),
+
+    ## hyper-priors
+    a_bar ~ dnorm(0, 1.5),
+    sigma_a ~ dexp(1),
+    sigma_g ~ dexp(1),
+    gq> vector[actor]:a <<- a_bar + z*sigma_a,
+    gq> vector[block_id]:g <<- x*sigma_g
+  )
+, data = dat_list, chains = 4 , log_lik = TRUE)
+precis(m13.4nc, depth=2)
+```
+And all of our n_effs are back near 500 or more, with only a few rhats not 1.00
+and no warnings about divergent transitions.
+
+Looking at the comparisons of n_eff
+
+```{r}
+precis_c <- precis( m13.4 , depth=2 )
+precis_nc <- precis( m13.4nc , depth=2 )
+pars <- c( paste("a[",1:7,"]",sep="") , paste("g[",1:6,"]",sep="") ,
+paste("b[",1:4,"]",sep="") , "a_bar" , "sigma_a" , "sigma_g" )
+neff_table <- cbind( precis_c[pars,"n_eff"] , precis_nc[pars,"n_eff"] )
+plot( neff_table , xlim=range(neff_table) , ylim=range(neff_table) ,
+xlab="n_eff (centered)" , ylab="n_eff (non-centered)" , lwd=2 )
+abline( a=0 , b=1 , lty=2 )
+```
+All bar two of the parameters ($\bar{\alpha}$ and $\sigma_\gamma$) do better in
+terms of n_eff in our non-centred parametrisations. 
+
+We can do this with any distribution. E.g. $x = z\lambda$ and 
+$z \sim Exponential(1)$ is the same as $x \sim Exponential(\lambda)$

@@ -1,0 +1,152 @@
+---
+title: "Chapter 14.4 - Dyad Models in Nicaragua"
+output: html_notebook
+---
+Another example of covariance and using a multi-normal distribution to model this. 
+
+Data is 25 families in rural Nicaragua giving gifts to each other.
+
+Count data with no obvious max so going to use poisson with usual log link.
+
+$gifts_{A -> B} \sim Poisson(\lambda_{AB})$
+
+Model lambda as being a linear model from generalized giving rate alpha, 
+a random effect for this specific household A, ditto for the receiving 
+household B, both regardless of dyad. Additionally have a dyad-specific rate
+that A gives to B.
+
+$log\lambda_{AB} = \alpha + g_A + r_B + d_{AB}$
+
+And vice-versa
+
+$gifts_{B -> A} \sim Poisson(\lambda_{BA})$
+
+$log\lambda_{BA} = \alpha + g_B + r_A + d_{BA}$
+
+The reason why we're talking about this with regards to covariance is the fact
+that we want the giving and receiving rates of each household to co-vary. Do
+households that give more also receive more? Or do those that give more 
+receive less? Or is there no correlation?
+$$
+\begin{pmatrix}
+g_i \\ r_i
+\end{pmatrix}
+\sim MVNormal
+\left(
+\begin{pmatrix}
+0 \\ 0
+\end{pmatrix},
+\begin{pmatrix}
+\sigma_g^2 & \sigma_g \sigma_r \rho_{gr} \\
+\sigma_g \sigma_r \rho_{gr} & \sigma_r^2
+\end{pmatrix}
+\right)
+$$
+Hence the multi-normal prior we will include to allow this correlation. 
+
+If $\rho_{gr}$ is positive, households that give more also tend to receive
+more. If negative, vice-versa. If zero, no relationship. This is in general.
+
+Similarly, interested in dyad effects co-varying. 
+$$
+\begin{pmatrix}
+d_{ij} \\ d_{ji}
+\end{pmatrix}
+\sim MVNormal
+\left(
+\begin{pmatrix}
+0 \\ 0
+\end{pmatrix},
+\begin{pmatrix}
+\sigma_d^2 & \sigma_d^2 \rho_{d} \\
+\sigma_d^2\rho_{d} & \sigma_d^2
+\end{pmatrix}
+\right)
+$$
+After considering households' general giving and receiving rates, are there
+relationships between specific pairs of households where the two households 
+give a lot to each other, or one gives and the other receives? 
+
+Only one $\sigma_d$ here cos the ordering shouldn't matter. 
+
+Creating the model, need to be careful. Here gr[hidA, 1] means the *giving* 
+rate of household A, and gr[hidA, 2] means the *receiving* rate.
+
+Also doing the non-centred thing here, with the correlation matrix specified
+as a generated quantity in the last block.
+```{r}
+library(rethinking)
+data("KosterLeckie")
+```
+```{r}
+kl_data <- list(
+  N = nrow(kl_dyads),
+  N_households = max(kl_dyads$hidB),
+  did = kl_dyads$did,
+  hidA = kl_dyads$hidA,
+  hidB = kl_dyads$hidB,
+  giftsAB = kl_dyads$giftsAB,
+  giftsBA = kl_dyads$giftsBA
+)
+```
+```{r results="hide"}
+m14.7 <- ulam(
+  alist(
+    giftsAB ~ poisson(lambdaAB),
+    giftsBA ~ poisson(lambdaBA),
+    log(lambdaAB) <- a + gr[hidA, 1] + gr[hidB, 2] + d[did, 1],
+    log(lambdaBA) <- a + gr[hidB, 1] + gr[hidA, 2] + d[did, 2],
+    a ~ normal(0, 1),
+    
+    vector[2]:gr[N_households] ~ multi_normal(0, Rho_gr, sigma_gr),
+    Rho_gr ~ lkj_corr(4),
+    sigma_gr ~ exponential(1),
+    
+    transpars> matrix[N,2]:d <- 
+      compose_noncentered(rep_vector(sigma_d, 2), L_Rho_d, z),
+    matrix[2,N]: z ~ normal(0, 1),
+    
+    cholesky_factor_corr[2]:L_Rho_d ~ lkj_corr_cholesky(8),
+    sigma_d ~ exponential(1),
+    
+    gq> matrix[2, 2]:Rho_d <<- Chol_to_Corr(L_Rho_d)
+    
+  ), data=kl_data, chains=4, iter=2000
+)
+```
+```{r}
+precis(m14.7, depth=3, pars=c("Rho_gr", "sigma_gr"))
+```
+Results! See that $\rho_{gr}$ is negative, with 89\% of its mass below zero.
+Households that give do less receiving and vice-versa. There is more variation
+in giving than in receiving.
+
+```{r}
+post <- extract.samples(m14.7)
+g <- sapply(1:25, function(i) post$a + post$gr[ , i, 1])
+r <- sapply(1:25, function(i) post$a + post$gr[ , i, 2])
+Eg_mu <- apply(exp(g), 2, mean)
+Er_mu <- apply(exp(r), 2, mean)
+plot( NULL, xlim=c(0, 8.6), ylim=c(0, 8.6), xlab="generalized giving",
+      ylab="generalized receiving", lwd=1.5)
+abline(a=0, b=1, lty=2)
+library(ellipse)
+for ( i in 1:25 ) {
+  Sigma <- cov(cbind( g[,i], r[,i]))
+  Mu <- c(mean(g[,i]), mean(r[,i]))
+  el <- ellipse(Sigma, centre=Mu, level=0.5)
+  lines(exp(el), col=col.alpha("black", 0.5))
+}
+points(Eg_mu, Er_mu, pch=21, bg="white", lwd=1.5)
+```
+Plot of each household's generalized giving and receiving, after taking into 
+account dyad effects. Can see the uncertainty in the posterior estimates for 
+each household, and also the rough negative correlation. 
+```{r}
+precis(m14.7, depth=3, pars=c("Rho_d", "sigma_d"))
+dy1 <- apply(post$d[,,1], 2, mean)
+dy2 <- apply(post$d[,,2], 2, mean)
+plot(dy1, dy2)
+```
+Dyad effect results. Very strong dyad effects! High value of $\sigma_d$ and 
+it's very certain about it.

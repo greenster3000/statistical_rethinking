@@ -1,0 +1,100 @@
+---
+title: "Chapter 13 Non-centred parametrisation practice"
+output: html_notebook
+---
+**13M3. Re-estimate the basic Reed frog varying intercept model, but now using a 
+Cauchy distribution in place of the Gaussian distribution for the varying 
+intercepts. That is, fit this model:**
+
+**$s_i \sim Binomial(n_i , p_i) \\
+logit(p_i) = \alpha_{TANK[i]} \\
+\alpha_{[TANK]} \sim Cauchy(\alpha, \sigma) \\
+\alpha \sim \mathcal{N}(0, 1) \\
+\alpha \sim Exponential(1)$**
+
+```{r}
+library(rethinking)
+data("reedfrogs")
+d <- reedfrogs
+
+d$tank <- 1:nrow(d)
+
+dat <- list(
+  S = as.integer(d$surv),
+  pred = as.integer(d$pred),
+  big=as.integer(d$size),
+  N=as.integer(d$density),
+  tank=as.integer(d$tank)
+)
+set.seed(1999)
+m13m3 <- ulam(
+  alist(
+    S ~ dbinom(N, p),
+    logit(p) <- a[tank],
+    a[tank] ~ dcauchy(alpha, sigma),
+    alpha ~ dnorm(0, 1),
+    sigma ~ dexp(1)
+  ), data=dat, chains=4, log_lik = TRUE
+)
+```
+121 divergent transitions! Highest rhat is 1.03
+
+**(You are likely to see many divergent transitions for this model. Can you 
+figure out why? Can you fix them?) **
+
+```{r}
+m13m3nc <- ulam(
+  alist(
+    S ~ dbinom(N, p),
+    logit(p) <- a_bar + z[tank]*sigma_a,
+    z[tank] ~ uniform(0, 1.570796),
+    a_bar ~ dnorm(0, 1),
+    sigma_a ~ dexp(1),
+    gq> vector[tank]:a <<-a_bar + sigma_a*z
+  ), data=dat, chains=4, log_lik = TRUE, iter=2000
+)
+```
+
+et voila! after some fishin around on the internet, found this:
+
+
+
+**Compare the posterior means of the 
+intercepts, $\alpha_{TANK}$, to the posterior means produced in the chapter, using the 
+customary Gaussian prior. Can you explain the pattern of differences? Take 
+note of any change in the mean $\alpha$ as well.**
+
+
+
+
+```{r results="hide"}
+m13.2 <- ulam(
+  alist(
+    S ~ dbinom( N , p ),
+    logit(p) <- a[tank],
+    a[tank] ~ dnorm(a_bar, sigma),
+    a_bar ~ dnorm(0 , 1.5),
+    sigma ~ dexp(1)
+  ), data=dat, chains=4, log_lik = TRUE
+)
+```
+```{r}
+precis_plot(precis(m13.2, depth=2), xlim = c(-2,20))
+precis_plot(precis(m13m3, depth=2), xlim=c(-2,20))
+precis(m13.2)
+precis(m13m3)
+```
+
+
+basically those a_tanks that were already quite high are now allowed to grow
+crazily big. Unsure as to what the cauchy distirbution is. It's learnt a
+slightly higher alpha bar now, and also oddly enough a lower sigma, despite
+this being far bigger variation in those crazy alphas
+
+to be honest though, the large individual alphas are all basically "always"
+on the log-odds scale already before cauchy.
+
+Apparently Cauchy has an undefined mean cos of tose crazy tails! That's where
+we get those large a values from
+
+re-parameterised to have no divergent transitions!
